@@ -1,0 +1,16 @@
+from ultralytics import YOLO
+import torch
+
+# Path to your YOLO .pt file
+model_path = "runs/dataset2_tiling_cbam3/weights/best.pt"
+
+# Load model
+model = YOLO(model_path)
+
+# Get the underlying PyTorch model
+torch_model = model.model
+
+print("=== YOLO Model Layers ===\n")
+
+for i, (name, module) in enumerate(torch_model.named_modules()):
+    print(f"[{i:03d}] {name}: {module.__class__.__name__}")
