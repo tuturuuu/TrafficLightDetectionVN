@@ -4,11 +4,11 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 import matplotlib
-matplotlib.use('Agg')  # Use headless backend
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # --- Load trained model ---
-model = YOLO("/home/vietpham/dataset/result/traffic_light_yolo3/weights/best.pt")
+model = YOLO("runs/dataset2_tiling_cbam3/weights/best.pt")
 
 # --- Define dataset paths ---
 dataset_path = "/home/vietpham/dataset/20240425-trafficlightandcountdowndisplay-1000/"
@@ -28,6 +28,27 @@ def compute_iou(boxA, boxB):
     boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
     boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
     return interArea / float(boxAArea + boxBArea - interArea)
+
+# --- NMS ---
+def nms_boxes(boxes, scores, iou_threshold=0.5):
+    if len(boxes) == 0:
+        return []
+
+    boxes_xywh = []
+    for x1, y1, x2, y2 in boxes:
+        boxes_xywh.append([x1, y1, x2 - x1, y2 - y1])
+
+    indices = cv2.dnn.NMSBoxes(
+        bboxes=boxes_xywh,
+        scores=scores,
+        score_threshold=0.0,
+        nms_threshold=iou_threshold
+    )
+
+    if len(indices) == 0:
+        return []
+
+    return indices.flatten().tolist()
 
 # --- Read YOLO txt labels ---
 def read_gt_boxes(label_path, img_w, img_h):
@@ -60,9 +81,9 @@ def draw_yolo_boxes(image_path, label_path, color=(0, 255, 0), label_type="GT"):
 
 # --- Evaluate & save wrong predictions ---
 wrong_count = 0
-max_save = 10  # save only 10 images
+max_save = 10
 
-output_dir = os.path.join("~/wrong_predictions")
+output_dir = "./wrong_predictions"
 os.makedirs(output_dir, exist_ok=True)
 
 for img_path in val_images:
@@ -74,13 +95,25 @@ for img_path in val_images:
     h, w, _ = img.shape
 
     gt_boxes = read_gt_boxes(label_path, w, h)
-    results = model.predict(source=img_path, conf=0.25, verbose=False, iou=0.45)
+    results = model.predict(source=img_path, conf=0.25, verbose=False)
+
     preds = results[0].boxes
 
-    pred_boxes = []
+    raw_boxes = []
+    raw_scores = []
+    raw_classes = []
+
     for b in preds:
-        cls = int(b.cls[0])
-        x1, y1, x2, y2 = map(int, b.xyxy[0].tolist())
+        raw_classes.append(int(b.cls[0]))
+        raw_scores.append(float(b.conf[0]))
+        raw_boxes.append(list(map(int, b.xyxy[0].tolist())))
+
+    keep = nms_boxes(raw_boxes, raw_scores, iou_threshold=0.5)
+
+    pred_boxes = []
+    for i in keep:
+        cls = raw_classes[i]
+        x1, y1, x2, y2 = raw_boxes[i]
         pred_boxes.append([cls, x1, y1, x2, y2])
 
     # --- Determine if prediction is wrong ---
@@ -88,7 +121,6 @@ for img_path in val_images:
     wrong = False
     used_pred = set()
 
-    # Check missing or wrong-class predictions
     for gt in gt_boxes:
         gt_cls, x1, y1, x2, y2 = gt
         matched = False
@@ -98,37 +130,33 @@ for img_path in val_images:
             if iou >= iou_threshold:
                 used_pred.add(i)
                 if int(pred_cls) != int(gt_cls):
-                    wrong = True  # wrong class
+                    wrong = True
                 matched = True
         if not matched:
-            wrong = True  # missing detection
+            wrong = True
 
-    # Check extra boxes
     if len(pred_boxes) > len(used_pred):
         wrong = True
 
     if not wrong:
-        continue  # skip correct cases
+        continue
 
     wrong_count += 1
 
-    # --- Visualization ---
     gt_img = draw_yolo_boxes(img_path, label_path, color=(0, 255, 0), label_type="GT")
-    pred_img = results[0].plot()  # predicted boxes in red
+    pred_img = results[0].plot()
 
     fig, axs = plt.subplots(1, 2, figsize=(14, 6))
     axs[0].imshow(cv2.cvtColor(gt_img, cv2.COLOR_BGR2RGB))
-    axs[0].set_title("Ground Truth (Green Boxes)")
+    axs[0].set_title("Ground Truth")
     axs[0].axis("off")
 
     axs[1].imshow(cv2.cvtColor(pred_img, cv2.COLOR_BGR2RGB))
-    axs[1].set_title("Predicted (Red Boxes)")
+    axs[1].set_title("Prediction (After NMS)")
     axs[1].axis("off")
 
-    # Save figure to disk
     out_path = os.path.join(output_dir, f"wrong_{wrong_count}.png")
     plt.savefig(out_path)
     plt.close(fig)
 
 print(f"Total wrong predictions saved: {wrong_count}")
-
