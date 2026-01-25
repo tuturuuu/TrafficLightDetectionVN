@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project implements an enhanced YOLO-based traffic light detection system optimized for Vietnamese traffic environments. The system is designed to accurately detect traffic lights and their countdown timers in real-world driving scenarios, enabling autonomous vehicles and intelligent traffic monitoring systems to interpret traffic signals reliably.
+This project implements an enhanced YOLO-based traffic light detection system. The system is designed to accurately detect traffic lights and their countdown timers in real-world driving scenarios, enabling autonomous vehicles and intelligent traffic monitoring systems to interpret traffic signals reliably.
 
 ### Key Features
 
@@ -115,7 +115,7 @@ python -c "import torch; import cv2; import ultralytics; print('All packages ins
 #### Root Level
 
 - **custom_modules.py**: Contains custom PyTorch modules and layer implementations used across the project
-- **yolo_tiling.py**: Main detection model using YOLOv with tiling-based inference for improved performance on images of varying sizes
+- **yolo_tiling.py**: Main detection model using YOLO with tiling-based inference for improved performance on images of varying sizes
 - **yolo_tiling_cbam.py**: Enhanced model variant incorporating CBAM (Convolutional Block Attention Module) for attention-based feature refinement
 
 #### evaluation/
@@ -142,7 +142,7 @@ model = YOLO('weights/best.pt')
 results = model.predict(source='path/to/image.jpg')
 ```
 
-The model automatically handles image tiling internally. For detection, the image is divided into tiles, YOLOv11 inference is run on each tile, and detection results are combined and merged to produce the final output. This approach ensures traffic lights are detected at multiple scales and resolutions.
+The model automatically handles image tiling internally. For detection, the image is divided into tiles, YOLO inference is run on each tile, and detection results are combined and merged to produce the final output. This approach ensures traffic lights are detected at multiple scales and resolutions.
 
 ### Model Evaluation
 
@@ -160,4 +160,4 @@ python evaluation/evaluation.py
 
 ## Support
 
-For issues or questions, please refer to the [ultralytics YOLOv11 documentation](https://docs.ultralytics.com/)
+For issues or questions, please refer to the [ultralytics YOLO documentation](https://docs.ultralytics.com/)
