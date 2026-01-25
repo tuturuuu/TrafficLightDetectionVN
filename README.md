@@ -6,7 +6,7 @@ This project implements an enhanced YOLO-based traffic light detection system op
 
 ### Key Features
 
-- YOLOv11m base model with custom enhancements for improved detection accuracy
+- YOLO base model with custom enhancements for improved detection accuracy
 - CBAM (Convolutional Block Attention Module) integration for focused feature learning
 - Tiling-based inference for handling images at various scales and resolutions
 - Comprehensive utilities for data conversion and preprocessing
@@ -72,7 +72,7 @@ pip install -r requirements.txt --no-deps
 
 This will install:
 
-- **ultralytics** (8.3.230) - YOLOv11 framework
+- **ultralytics** (8.3.230) - YOLO framework
 - **torch** (2.9.1+cu128) - Deep learning framework with CUDA support
 - **opencv-python** (4.12.0) - Computer vision operations
 - **matplotlib** (3.10.7) - Visualization
@@ -94,8 +94,8 @@ python -c "import torch; import cv2; import ultralytics; print('All packages ins
 ├── README.md                          # Project documentation
 ├── requirements.txt                   # Python dependencies
 ├── custom_modules.py                  # Custom module implementations
-├── yolo11m_tiling.py                  # YOLOv11m model with tiling inference
-├── yolo11m_tiling_cbam.py             # YOLOv11m with CBAM attention module
+├── yolo_tiling.py                     # YOLO model with tiling inference
+├── yolo_tiling_cbam.py                # YOLO with CBAM attention module
 │
 ├── weights/                           # The weights of the model
 │   ├── best.pt                        # Sample model weight
@@ -115,8 +115,8 @@ python -c "import torch; import cv2; import ultralytics; print('All packages ins
 #### Root Level
 
 - **custom_modules.py**: Contains custom PyTorch modules and layer implementations used across the project
-- **yolo11m_tiling.py**: Main detection model using YOLOv11m with tiling-based inference for improved performance on images of varying sizes
-- **yolo11m_tiling_cbam.py**: Enhanced model variant incorporating CBAM (Convolutional Block Attention Module) for attention-based feature refinement
+- **yolo_tiling.py**: Main detection model using YOLOv with tiling-based inference for improved performance on images of varying sizes
+- **yolo_tiling_cbam.py**: Enhanced model variant incorporating CBAM (Convolutional Block Attention Module) for attention-based feature refinement
 
 #### evaluation/
 
