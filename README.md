@@ -1,8 +1,8 @@
-# Traffic Light Detection with YOLOv11
+# Traffic Light Detection with YOLO
 
 ## Project Overview
 
-This project implements an enhanced YOLOv11-based traffic light detection system optimized for Vietnamese traffic environments. The system is designed to accurately detect traffic lights and their countdown timers in real-world driving scenarios, enabling autonomous vehicles and intelligent traffic monitoring systems to interpret traffic signals reliably.
+This project implements an enhanced YOLO-based traffic light detection system optimized for Vietnamese traffic environments. The system is designed to accurately detect traffic lights and their countdown timers in real-world driving scenarios, enabling autonomous vehicles and intelligent traffic monitoring systems to interpret traffic signals reliably.
 
 ### Key Features
 
