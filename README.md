@@ -1,12 +1,12 @@
-# Traffic Light Detection with YOLO
+*# Traffic Light Detection with YOLO
 
 ## Project Overview
 
-This project implements an enhanced YOLO-based traffic light detection system. The system is designed to accurately detect traffic lights and their countdown timers in real-world driving scenarios, enabling autonomous vehicles and intelligent traffic monitoring systems to interpret traffic signals reliably.
+This project implements an enhanced YOLOv8-based traffic light detection system. The system is designed to accurately detect traffic lights and their countdown timers in real-world driving scenarios, enabling autonomous vehicles and intelligent traffic monitoring systems to interpret traffic signals reliably.
 
 ### Key Features
 
-- YOLO base model with custom enhancements for improved detection accuracy
+- YOLOv8 base model with custom enhancements for improved detection accuracy
 - CBAM (Convolutional Block Attention Module) integration for focused feature learning
 - Tiling-based inference for handling images at various scales and resolutions
 - Comprehensive utilities for data conversion and preprocessing
@@ -94,8 +94,8 @@ python -c "import torch; import cv2; import ultralytics; print('All packages ins
 ├── README.md                          # Project documentation
 ├── requirements.txt                   # Python dependencies
 ├── custom_modules.py                  # Custom module implementations
-├── yolo_tiling.py                     # YOLO model with tiling inference
-├── yolo_tiling_cbam.py                # YOLO with CBAM attention module
+├── yolo_tiling.py                     # YOLOv8 model with tiling inference
+├── yolo_tiling_cbam.py                # YOLOv8 with CBAM attention module
 │
 ├── weights/                           # The weights of the model
 │   ├── best.pt                        # Sample model weight
@@ -115,7 +115,7 @@ python -c "import torch; import cv2; import ultralytics; print('All packages ins
 #### Root Level
 
 - **custom_modules.py**: Contains custom PyTorch modules and layer implementations used across the project
-- **yolo_tiling.py**: Main detection model using YOLO with tiling-based inference for improved performance on images of varying sizes
+- **yolo_tiling.py**: Main detection model using YOLOv8 with tiling-based inference for improved performance on images of varying sizes
 - **yolo_tiling_cbam.py**: Enhanced model variant incorporating CBAM (Convolutional Block Attention Module) for attention-based feature refinement
 
 #### evaluation/
@@ -161,3 +161,4 @@ python evaluation/evaluation.py
 ## Support
 
 For issues or questions, please refer to the [ultralytics YOLO documentation](https://docs.ultralytics.com/)
+*

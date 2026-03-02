@@ -7,7 +7,7 @@ model = YOLO("runs/traffic_light_dataset2_tiling/weights/best.pt")
 image_dir = Path("/home/vietpham/dataset/20240425-trafficlightandcountdowndisplay-1000/test_tiled/images")
 images = list(image_dir.glob("*.jpg"))
 
-TILES_PER_IMAGE = 3  # ⚠️ change this to your actual tiling number
+TILES_PER_IMAGE = 3  # !!!! change this to your actual tiling number
 
 # ---- Warm-up ----
 for _ in range(5):

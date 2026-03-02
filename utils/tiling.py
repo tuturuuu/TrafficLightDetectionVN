@@ -13,7 +13,7 @@ overlap = 0.2                        # overlap ratio between tiles
 def tile_image_and_labels(img_path, label_path, out_img_dir, out_lbl_dir, tile_size=640, overlap=0.2):
     img = cv2.imread(img_path)
     if img is None:
-        print(f"⚠️ Skipping unreadable image: {img_path}")
+        print(f"Skipping unreadable image: {img_path}")
         return
     h, w = img.shape[:2]
     step = int(tile_size * (1 - overlap))
@@ -84,4 +84,4 @@ for split in splits:
         lbl_path = os.path.join(lbl_dir, Path(f).stem + ".txt")
         tile_image_and_labels(img_path, lbl_path, out_img_dir, out_lbl_dir, tile_size, overlap)
 
-print("✅ Done! Tiled dataset created.")
+print("Done! Tiled dataset created.")

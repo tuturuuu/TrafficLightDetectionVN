@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 model = YOLO("runs/dataset2_tiling_cbam3/weights/best.pt")
 
 # --- Define dataset paths ---
-dataset_path = "/home/vietpham/dataset/20240425-trafficlightandcountdowndisplay-1000/"
+dataset_path = "dataset/20240425-trafficlightandcountdowndisplay-1000/"
 val_images = sorted(glob.glob(os.path.join(dataset_path, "val/images/*.jpg")))
 
 # --- IoU helper function ---

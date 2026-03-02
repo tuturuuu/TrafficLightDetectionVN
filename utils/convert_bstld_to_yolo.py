@@ -1,17 +1,18 @@
 from pathlib import Path
 import os
 import yaml
+import json
 import random
 import shutil
 import cv2
+import matplotlib.pyplot as plt
 
 # Update these paths according to your setup
-BSTLD_ROOT = "/home/vietpham/dataset/bstld"  # Update this!
+BSTLD_ROOT = "/bstld-DatasetNinja"  # Update this!
 OUTPUT_ROOT = "./bstld_yolo_format"  # Update this!
 RESULTS_DIR = "./bosch_result/results"  # Update this!
 
 # BSTLD class mapping
-# BSTLD has 4 main classes with various directional variants
 CLASS_NAMES = ['red', 'yellow', 'green', 'off']
 
 # Map all BSTLD label variants to the 4 main classes
@@ -21,11 +22,11 @@ CLASS_MAPPING = {
     'yellow': 1, 
     'green': 2,
     'off': 3,
-    # Capitalized versions (actual BSTLD format)
+    # Capitalized versions
     'Red': 0,
     'Yellow': 1,
     'Green': 2,
-    'off': 3,  # 'off' is typically lowercase in BSTLD
+    'Off': 3,
     # Red variants
     'RedLeft': 0,
     'RedRight': 0,
@@ -39,7 +40,6 @@ CLASS_MAPPING = {
     'YellowStraightLeft': 1,
     'YellowStraightRight': 1,
     # Green variants
-    'Green': 2,
     'GreenLeft': 2,
     'GreenRight': 2,
     'GreenStraight': 2,
@@ -47,7 +47,6 @@ CLASS_MAPPING = {
     'GreenStraightRight': 2,
 }
 
-import matplotlib.pyplot as plt
 
 def debug_save_image_with_boxes(img_path, yolo_label_path, save_path):
     """Plot image with YOLO boxes and save to disk (server-friendly)."""
@@ -67,7 +66,10 @@ def debug_save_image_with_boxes(img_path, yolo_label_path, save_path):
     boxes = []
     with open(yolo_label_path, "r") as f:
         for line in f.readlines():
-            class_id, xc, yc, bw, bh = map(float, line.split())
+            parts = line.strip().split()
+            if len(parts) != 5:
+                continue
+            class_id, xc, yc, bw, bh = map(float, parts)
             # Convert normalized → pixel coords
             xc *= w
             yc *= h
@@ -100,7 +102,7 @@ def debug_save_image_with_boxes(img_path, yolo_label_path, save_path):
 def create_data_yaml(output_root):
     """Create YOLO data.yaml configuration file"""
     data_yaml = {
-        'path': output_root,
+        'path': os.path.abspath(output_root),
         'train': 'images/train',
         'val': 'images/val',
         'test': 'images/test',
@@ -114,13 +116,20 @@ def create_data_yaml(output_root):
     
     print(f"Created data.yaml at: {yaml_path}")
 
+
 def convert_bbox_to_yolo(bbox, img_width, img_height):
     """
-    Convert BSTLD bbox format to YOLO format
-    BSTLD format: [x_min, y_min, x_max, y_max] in pixels
+    Convert bbox format to YOLO format
+    Input: [x_min, y_min, x_max, y_max] or dict with x_min, y_min, x_max, y_max
     YOLO format: [x_center, y_center, width, height] normalized [0-1]
     """
-    x_min, y_min, x_max, y_max = bbox
+    if isinstance(bbox, dict):
+        x_min = bbox['x_min']
+        y_min = bbox['y_min']
+        x_max = bbox['x_max']
+        y_max = bbox['y_max']
+    else:
+        x_min, y_min, x_max, y_max = bbox
     
     # Calculate center coordinates and dimensions
     x_center = (x_min + x_max) / 2.0
@@ -136,194 +145,181 @@ def convert_bbox_to_yolo(bbox, img_width, img_height):
     
     return x_center_norm, y_center_norm, width_norm, height_norm
 
-def read_bstld_yaml(yaml_path):
-    """Read BSTLD YAML annotation file"""
-    with open(yaml_path, 'r') as f:
-        data = yaml.safe_load(f)
+
+def load_annotations_from_json(json_path):
+    """Load annotations from JSON file (DatasetNinja format)"""
+    with open(json_path, 'r') as f:
+        data = json.load(f)
     return data
 
-    
-# ---------- Add this helper near the top of your script ----------
-def resolve_image_path(raw_path, bstld_root):
+
+def process_split_new_structure(split_name, bstld_root, output_root):
     """
-    Given a raw path string from YAML and the bstld_root,
-    try a list of candidate locations and return the first that exists.
-    Returns absolute path or None if not found.
+    Process a split with the new BSTLD structure:
+    - Images in: {split}/img/
+    - Annotations in: {split}/ann/ (JSON files with same name as images)
     """
-    if not raw_path:
-        return None
-
-    # If already absolute and exists, return it
-    if os.path.isabs(raw_path) and os.path.exists(raw_path):
-        return raw_path
-
-    # Normalize tilde / leading ./ etc
-    normalized = raw_path.lstrip("./")
-
-    candidates = []
-
-    # If path looks like "rgb/..." or "./rgb/..."
-    candidates.append(os.path.join(bstld_root, normalized))
-
-    # Plain basename (search for file directly under bstld_root/test or bstld_root/train or bstld_root)
-    basename = os.path.basename(raw_path)
-    candidates.extend([
-        os.path.join(bstld_root, basename),
-        os.path.join(bstld_root, "test", basename),
-        os.path.join(bstld_root, "train", basename),
-        os.path.join(bstld_root, "rgb", "test", basename),
-        os.path.join(bstld_root, "rgb", "train", basename),
-        os.path.join(bstld_root, "rgb", basename),
-    ])
-
-    # Also try raw_path appended to bstld_root (in case YAML is relative but without rgb/)
-    candidates.append(os.path.join(bstld_root, raw_path))
-
-    # De-duplicate while preserving order
-    seen = set()
-    dedup = []
-    for c in candidates:
-        cnorm = os.path.normpath(c)
-        if cnorm not in seen:
-            seen.add(cnorm)
-            dedup.append(cnorm)
-
-    for c in dedup:
-        if os.path.exists(c):
-            return c
-
-    # Not found
-    return None
-
-# ---------- Replace process_split with this version ----------
-def process_split(images_data, bstld_root, output_root, split_name):
-    """Process a single split (train/val/test) with robust path resolution"""
     
     processed_count = 0
     skipped_count = 0
     total_boxes = 0
     class_counts = {label: 0 for label in CLASS_NAMES}
-    label_issues = []
     
-    for img_idx, img_info in enumerate(images_data):
-        # Get image path (raw from YAML)
-        raw_img_path = img_info.get('path', '')
-        if not raw_img_path:
-            skipped_count += 1
-            continue
-
-        # Resolve to a real local path
-        full_img_path = resolve_image_path(raw_img_path, bstld_root)
-        if full_img_path is None:
-            print(f"  Warning: Image not found (resolved): {raw_img_path}")
-            skipped_count += 1
-            continue
-
-        # Read image to get dimensions
-        img = cv2.imread(full_img_path)
-        if img is None:
-            print(f"  Warning: Cannot read image: {full_img_path}")
-            skipped_count += 1
-            continue
-            
-        img_height, img_width = img.shape[:2]
+    # Paths for this split
+    img_dir = os.path.join(bstld_root, split_name, 'img')
+    ann_dir = os.path.join(bstld_root, split_name, 'ann')
+    
+    if not os.path.exists(img_dir):
+        print(f"Warning: Image directory not found: {img_dir}")
+        return
+    
+    if not os.path.exists(ann_dir):
+        print(f"Warning: Annotation directory not found: {ann_dir}")
+        return
+    
+    # Get all image files
+    image_files = []
+    for ext in ['*.jpg', '*.jpeg', '*.png', '*.JPG', '*.JPEG', '*.PNG']:
+        image_files.extend(Path(img_dir).glob(ext))
+    
+    print(f"  Found {len(image_files)} images in {img_dir}")
+    
+    for img_path in image_files:
+        img_filename = img_path.name
+        img_name = img_path.stem
         
-        # Get image filename
-        img_filename = os.path.basename(full_img_path)
-        img_name = os.path.splitext(img_filename)[0]
+        # Look for corresponding annotation file
+        # Annotation files are named {filename}.png.json (includes the extension)
+        ann_path = os.path.join(ann_dir, f"{img_filename}.json")
+        
+        if not os.path.exists(ann_path):
+            print(f"  Warning: No annotation file for {img_filename}")
+            skipped_count += 1
+            continue
+        
+        # Read image to get dimensions
+        img = cv2.imread(str(img_path))
+        if img is None:
+            print(f"  Warning: Cannot read image: {img_path}")
+            skipped_count += 1
+            continue
+        
+        img_height, img_width = img.shape[:2]
         
         # Copy image to output
         output_img_path = os.path.join(output_root, 'images', split_name, img_filename)
-        shutil.copy2(full_img_path, output_img_path)
+        shutil.copy2(str(img_path), output_img_path)
         
-        # Convert annotations to YOLO format
-        boxes = img_info.get('boxes', [])
+        # Load annotations
+        try:
+            ann_data = load_annotations_from_json(ann_path)
+        except Exception as e:
+            print(f"  Warning: Error loading annotations from {ann_path}: {e}")
+            skipped_count += 1
+            continue
+        
+        # Parse annotations - DatasetNinja format
         yolo_annotations = []
         
-        # Debug first image's boxes
-        if img_idx == 0 and len(boxes) > 0:
-            print(f"\n  DEBUG - First image box structure:")
-            print(f"  Image: {img_filename}")
-            print(f"  Number of boxes: {len(boxes)}")
-            print(f"  First box keys: {boxes[0].keys()}")
-            print(f"  First box: {boxes[0]}")
+        # Check different possible structures
+        objects = []
+        if isinstance(ann_data, dict):
+            if 'objects' in ann_data:
+                objects = ann_data['objects']
+            elif 'annotations' in ann_data:
+                objects = ann_data['annotations']
+            elif 'boxes' in ann_data:
+                objects = ann_data['boxes']
+        elif isinstance(ann_data, list):
+            objects = ann_data
         
-        for box_idx, box in enumerate(boxes):
-            # Try different possible label keys
+        for obj in objects:
+            # Extract label
             label = None
-            for key in ['label', 'class', 'category', 'occluded_state']:
-                if key in box:
-                    label = box[key]
-                    if img_idx == 0 and box_idx == 0:
-                        print(f"  Found label in key '{key}': {label}")
+            for key in ['classTitle', 'class', 'label', 'category']:
+                if key in obj:
+                    label = obj[key]
                     break
             
             if label is None:
-                if (img_idx, box_idx) not in [(i, j) for i, j in label_issues[:5]]:
-                    label_issues.append((img_idx, box_idx))
-                    if len(label_issues) <= 5:
-                        print(f"  Warning: No label found in box {box_idx} of image {img_idx}")
-                        print(f"    Box keys: {box.keys()}")
-                        print(f"    Box: {box}")
                 continue
             
-            # Keep original case - BSTLD uses capitalized labels
+            # Map label to class
             label = str(label)
-            
             if label not in CLASS_MAPPING:
-                # Try to add it to mapping dynamically based on color prefix
+                # Try to match by color prefix
                 label_lower = label.lower()
                 if 'red' in label_lower:
                     class_id = 0
-                    print(f"  Note: Mapping unknown red variant '{label}' to class 0 (red)")
                 elif 'yellow' in label_lower:
                     class_id = 1
-                    print(f"  Note: Mapping unknown yellow variant '{label}' to class 1 (yellow)")
                 elif 'green' in label_lower:
                     class_id = 2
-                    print(f"  Note: Mapping unknown green variant '{label}' to class 2 (green)")
                 elif 'off' in label_lower:
                     class_id = 3
-                    print(f"  Note: Mapping unknown off variant '{label}' to class 3 (off)")
                 else:
-                    if len(label_issues) <= 10:
-                        print(f"  Warning: Unknown label '{label}' in {img_filename}, skipping")
+                    print(f"  Warning: Unknown label '{label}' in {img_filename}, skipping")
                     continue
             else:
                 class_id = CLASS_MAPPING[label]
             
-            # Track class for statistics
-            class_name = CLASS_NAMES[class_id]
-            class_counts[class_name] += 1
+            # Extract bbox - check different formats
+            bbox = None
             
-            # Get bbox coordinates
-            x_min = box.get('x_min', 0)
-            y_min = box.get('y_min', 0)
-            x_max = box.get('x_max', 0)
-            y_max = box.get('y_max', 0)
+            # Format 1: points array [[x1,y1], [x2,y2]]
+            if 'points' in obj and 'exterior' in obj['points']:
+                points = obj['points']['exterior']
+                if len(points) == 2:
+                    x_min = min(points[0][0], points[1][0])
+                    y_min = min(points[0][1], points[1][1])
+                    x_max = max(points[0][0], points[1][0])
+                    y_max = max(points[0][1], points[1][1])
+                    bbox = [x_min, y_min, x_max, y_max]
+            
+            # Format 2: direct coordinates
+            elif all(k in obj for k in ['x_min', 'y_min', 'x_max', 'y_max']):
+                bbox = [obj['x_min'], obj['y_min'], obj['x_max'], obj['y_max']]
+            
+            # Format 3: bbox key
+            elif 'bbox' in obj:
+                bbox_data = obj['bbox']
+                if isinstance(bbox_data, list) and len(bbox_data) == 4:
+                    bbox = bbox_data
+                elif isinstance(bbox_data, dict):
+                    bbox = [bbox_data['x_min'], bbox_data['y_min'], 
+                           bbox_data['x_max'], bbox_data['y_max']]
+            
+            if bbox is None:
+                print(f"  Warning: Could not extract bbox from {img_filename}")
+                continue
+            
+            x_min, y_min, x_max, y_max = bbox
             
             # Validate coordinates
             if x_max <= x_min or y_max <= y_min:
-                print(f"  Warning: Invalid box coordinates in {img_filename}: {box}")
+                print(f"  Warning: Invalid box coordinates in {img_filename}")
                 continue
             
             # Convert to YOLO format
             x_center, y_center, width, height = convert_bbox_to_yolo(
-                [x_min, y_min, x_max, y_max], img_width, img_height
+                bbox, img_width, img_height
             )
+            
+            # Clamp values to [0, 1]
+            x_center = max(0, min(1, x_center))
+            y_center = max(0, min(1, y_center))
+            width = max(0, min(1, width))
+            height = max(0, min(1, height))
             
             yolo_annotations.append(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
             total_boxes += 1
+            class_counts[CLASS_NAMES[class_id]] += 1
         
-        # Write YOLO label file (even if empty, to track images without labels)
+        # Write YOLO label file
         output_label_path = os.path.join(output_root, 'labels', split_name, f"{img_name}.txt")
-        if yolo_annotations:
-            with open(output_label_path, 'w') as f:
+        with open(output_label_path, 'w') as f:
+            if yolo_annotations:
                 f.write('\n'.join(yolo_annotations))
-        else:
-            # Create empty file for images without labels
-            with open(output_label_path, 'w') as f:
-                pass
         
         processed_count += 1
     
@@ -331,59 +327,195 @@ def process_split(images_data, bstld_root, output_root, split_name):
     print(f"    Processed: {processed_count} images")
     print(f"    Skipped: {skipped_count} images")
     print(f"    Total boxes: {total_boxes}")
-    print(f"    Class distribution:")
-    for label in CLASS_NAMES:
-        count = class_counts[label]
-        percentage = (count / total_boxes * 100) if total_boxes > 0 else 0
-        print(f"      {label}: {count} ({percentage:.1f}%)")
-    
-    if len(label_issues) > 5:
-        print(f"    Note: {len(label_issues)} total boxes had label issues")
+    if total_boxes > 0:
+        print(f"    Class distribution:")
+        for label in CLASS_NAMES:
+            count = class_counts[label]
+            percentage = (count / total_boxes * 100) if total_boxes > 0 else 0
+            print(f"      {label}: {count} ({percentage:.1f}%)")
 
-# ---------- Replace convert_bstld_to_yolo's loop so test is processed ----------
+
 def convert_bstld_to_yolo(bstld_root, output_root):
     """
-    Convert BSTLD dataset to YOLO format (updated: actually process test set + robust path resolution)
+    Convert BSTLD dataset to YOLO format
+    Works with DatasetNinja structure: {train,test}/{img,ann}
     """
     print("Converting BSTLD to YOLO format...")
+    print(f"Input: {bstld_root}")
+    print(f"Output: {output_root}")
     
     # Create output directories
     for split in ['train', 'val', 'test']:
         Path(output_root, 'images', split).mkdir(parents=True, exist_ok=True)
         Path(output_root, 'labels', split).mkdir(parents=True, exist_ok=True)
     
-    # Process train and test sets
-    for split in ['train', 'test']:
-        yaml_file = os.path.join(bstld_root, f'{split}.yaml')
+    # Process train set - split into train/val
+    print("\nProcessing train set...")
+    train_img_dir = os.path.join(bstld_root, 'train', 'img')
+    if os.path.exists(train_img_dir):
+        # Get all images
+        train_images = []
+        for ext in ['*.jpg', '*.jpeg', '*.png', '*.JPG', '*.JPEG', '*.PNG']:
+            train_images.extend(list(Path(train_img_dir).glob(ext)))
         
-        if not os.path.exists(yaml_file):
-            print(f"Warning: {yaml_file} not found, skipping {split} set")
-            continue
-            
-        print(f"Processing {split} set...")
-        data = read_bstld_yaml(yaml_file)
+        # Shuffle and split
+        random.shuffle(train_images)
+        split_idx = int(0.8 * len(train_images))
+        train_subset = train_images[:split_idx]
+        val_subset = train_images[split_idx:]
         
-        images_data = data if isinstance(data, list) else data.get('images', [])
+        print(f"  Split {len(train_images)} images into:")
+        print(f"    Train: {len(train_subset)} images")
+        print(f"    Val: {len(val_subset)} images")
         
-        if split == 'train':
-            random.shuffle(images_data)
-            split_idx = int(0.8 * len(images_data))
-            train_data = images_data[:split_idx]
-            val_data = images_data[split_idx:]
-            
-            process_split(train_data, bstld_root, output_root, 'train')
-            process_split(val_data, bstld_root, output_root, 'val')
-        else:
-            # IMPORTANT: actually process the test set
-            process_split(images_data, bstld_root, output_root, 'test')
+        # Process train subset
+        print("\n  Processing training subset...")
+        process_images_subset(train_subset, bstld_root, output_root, 'train', 'train')
+        
+        # Process val subset
+        print("\n  Processing validation subset...")
+        process_images_subset(val_subset, bstld_root, output_root, 'train', 'val')
+    
+    # Process test set
+    print("\nProcessing test set...")
+    test_img_dir = os.path.join(bstld_root, 'test', 'img')
+    if os.path.exists(test_img_dir):
+        process_split_new_structure('test', bstld_root, output_root)
     
     # Create data.yaml
     create_data_yaml(output_root)
     
-    print(f"Conversion complete! YOLO dataset saved to: {output_root}")
+    print(f"\nConversion complete! YOLO dataset saved to: {output_root}")
 
 
+def process_images_subset(image_paths, bstld_root, output_root, source_split, target_split):
+    """Process a subset of images (for train/val split)"""
+    
+    processed_count = 0
+    skipped_count = 0
+    total_boxes = 0
+    class_counts = {label: 0 for label in CLASS_NAMES}
+    
+    ann_dir = os.path.join(bstld_root, source_split, 'ann')
+    
+    for img_path in image_paths:
+        img_filename = img_path.name
+        img_name = img_path.stem
+        
+        # Look for corresponding annotation file
+        # Annotation files are named {filename}.png.json (includes the extension)
+        ann_path = os.path.join(ann_dir, f"{img_filename}.json")
+        
+        if not os.path.exists(ann_path):
+            skipped_count += 1
+            continue
+        
+        # Read image to get dimensions
+        img = cv2.imread(str(img_path))
+        if img is None:
+            skipped_count += 1
+            continue
+        
+        img_height, img_width = img.shape[:2]
+        
+        # Copy image to output
+        output_img_path = os.path.join(output_root, 'images', target_split, img_filename)
+        shutil.copy2(str(img_path), output_img_path)
+        
+        # Load annotations
+        try:
+            ann_data = load_annotations_from_json(ann_path)
+        except Exception as e:
+            skipped_count += 1
+            continue
+        
+        # Parse annotations
+        yolo_annotations = []
+        
+        objects = []
+        if isinstance(ann_data, dict):
+            if 'objects' in ann_data:
+                objects = ann_data['objects']
+            elif 'annotations' in ann_data:
+                objects = ann_data['annotations']
+        elif isinstance(ann_data, list):
+            objects = ann_data
+        
+        for obj in objects:
+            # Extract label
+            label = None
+            for key in ['classTitle', 'class', 'label', 'category']:
+                if key in obj:
+                    label = obj[key]
+                    break
+            
+            if label is None:
+                continue
+            
+            label = str(label)
+            if label not in CLASS_MAPPING:
+                label_lower = label.lower()
+                if 'red' in label_lower:
+                    class_id = 0
+                elif 'yellow' in label_lower:
+                    class_id = 1
+                elif 'green' in label_lower:
+                    class_id = 2
+                elif 'off' in label_lower:
+                    class_id = 3
+                else:
+                    continue
+            else:
+                class_id = CLASS_MAPPING[label]
+            
+            # Extract bbox
+            bbox = None
+            if 'points' in obj and 'exterior' in obj['points']:
+                points = obj['points']['exterior']
+                if len(points) == 2:
+                    x_min = min(points[0][0], points[1][0])
+                    y_min = min(points[0][1], points[1][1])
+                    x_max = max(points[0][0], points[1][0])
+                    y_max = max(points[0][1], points[1][1])
+                    bbox = [x_min, y_min, x_max, y_max]
+            elif all(k in obj for k in ['x_min', 'y_min', 'x_max', 'y_max']):
+                bbox = [obj['x_min'], obj['y_min'], obj['x_max'], obj['y_max']]
+            
+            if bbox is None:
+                continue
+            
+            x_min, y_min, x_max, y_max = bbox
+            
+            if x_max <= x_min or y_max <= y_min:
+                continue
+            
+            # Convert to YOLO format
+            x_center, y_center, width, height = convert_bbox_to_yolo(
+                bbox, img_width, img_height
+            )
+            
+            x_center = max(0, min(1, x_center))
+            y_center = max(0, min(1, y_center))
+            width = max(0, min(1, width))
+            height = max(0, min(1, height))
+            
+            yolo_annotations.append(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
+            total_boxes += 1
+            class_counts[CLASS_NAMES[class_id]] += 1
+        
+        # Write YOLO label file
+        output_label_path = os.path.join(output_root, 'labels', target_split, f"{img_name}.txt")
+        with open(output_label_path, 'w') as f:
+            if yolo_annotations:
+                f.write('\n'.join(yolo_annotations))
+        
+        processed_count += 1
+    
+    print(f"    Processed: {processed_count} images")
+    print(f"    Skipped: {skipped_count} images")
+    print(f"    Total boxes: {total_boxes}")
 
 
-print("Converting BSTLD to YOLO format...")
-convert_bstld_to_yolo(BSTLD_ROOT, OUTPUT_ROOT)
+if __name__ == "__main__":
+    print("Converting BSTLD to YOLO format...")
+    convert_bstld_to_yolo(BSTLD_ROOT, OUTPUT_ROOT)
