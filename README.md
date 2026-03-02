@@ -1,4 +1,4 @@
-*# Traffic Light Detection with YOLO
+# Traffic Light Detection with YOLO
 
 ## Project Overview
 
